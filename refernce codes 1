@@ -1,0 +1,205 @@
+SOME MISTAKES TAKE YOU TO THE DESTINATION I FEEL AND TRY ON TRY ON TO GET !!
+
+
+#include<REG52.H>
+sbit RS   = P2^0;
+sbit RW   = P2^1;
+sbit E    = P2^2;
+#define LCD_DATA P3    
+sbit DHT11 = P1^0;       
+unsigned char rx[16];
+void delay_ms(unsigned int ms){
+	int i,j;
+	for(i = 0;i<ms;i++){
+		for(j = 0;j<1275;j++){
+			
+		}
+	}
+}
+void delay_us(unsigned int us) {
+  unsigned int i, j;
+  for (i = 0; i < us; i++) {
+    for (j = 0; j < 1; j++){
+    	
+	}
+  }
+}
+void lcd_enable(){
+	E = 1;
+	delay_ms(2);
+	E = 0;
+}
+void lcd_cmd(unsigned char cmd){
+	RS = 0;
+	RW = 0;
+	//LCD_DATA = (cmd & 0xF0);
+	P3 = (P3 & 0x0F) | (cmd & 0xF0);
+	lcd_enable();
+//	LCD_DATA = ((cmd<<4) & 0xF0);
+P3 = (P3 & 0x0F) | ((cmd<<4) & 0xF0);
+	lcd_enable();
+}
+void lcd_data(unsigned char dat){
+	RS = 1;
+	RW = 0;
+	//LCD_DATA = (dat & 0xF0);
+	P3 = (P3 & 0x0F) | (dat & 0xF0);
+	lcd_enable();
+	//LCD_DATA = ((dat<<4) & 0xF0);
+	P3 = (P3 & 0x0F) | ((dat<<4) & 0xF0);
+	lcd_enable();
+}
+void lcd_string(char h[]){
+	int i =0;
+	while(h[i] != '\0'){
+		lcd_data(h[i]);
+		i++;
+	}
+}
+void lcd_Init(){
+	lcd_cmd(0x28);
+	lcd_cmd(0x0C);
+	lcd_cmd(0x06);
+	lcd_cmd(0x01);
+}
+void UART_Init(){
+	TMOD = 0x20;
+	SCON = 0x50;
+	TH1 = 0xFD;
+	TR1 = 1;
+}
+void UART_Tx(char c){
+	SBUF = c;
+	while(!TI);
+		TI = 0;
+}
+void UART_TxString(s[]){
+   int i = 0;
+   while(s[i] != '\0'){
+   	 UART_Tx(s[i]);
+   	 i++;
+   }	
+}
+
+void serial_ISR(void) interrupt 4{
+		char ch;
+	int i = 0;
+	if (RI){
+		ch = SBUF;
+		if(ch == '\r'){
+			rx[i] = '\0';
+			if(strcmp(rx,"TEM") == 0){
+				lcd_cmd(0x01);
+				lcd_cmd(0x80);
+				lcd_string("Temperature is..");
+			}
+			else if(strcmp(rx,"HUM") == 0){
+				lcd_cmd(0x01);
+				lcd_cmd(0x80);
+				lcd_string("Humidity is..");
+			}
+			else if(strcmp(rx,"TEM/HUM") == 0){
+				lcd_cmd(0x01);
+				lcd_cmd(0x80);
+				lcd_string("Tem/Hum is..");
+				
+			}
+			else{
+				lcd_cmd(0x01);
+				lcd_cmd(0x80);
+				lcd_string("Error Cmd..");
+			}
+			i = 0;
+			
+		}
+		
+	}
+}
+bit dht11_start(void){
+	DHT11 = 0;
+	delay_ms(20);
+	DHT11 = 1;
+	delay_us(30);
+	
+	if(DHT11 == 0){
+		while(DHT11 == 0);
+		while(DHT11 == 1);
+		return 1;
+	}
+	return 0;
+}
+
+bit dht11_checkresponse(){
+	delay_us(40);
+	if(DHT11 == 0){
+		delay_us(80);
+		if(DHT11 == 1){
+			delay_us(80);
+			return 1;
+	
+		}
+	}
+	return 0;
+}
+bit dht_readbit(){
+	while(!DHT11){
+		delay_us(35);
+	}
+	return DHT11;
+}
+unsigned char dht_readByte(){
+	unsigned char i = 0;
+	unsigned char value = 0 ;
+	for(i;i<8;i++){
+		value <<=1 ;
+		if(dht_readByte()){
+			value = value | 1;
+		}
+		while(DHT11);
+	}
+	return value;
+}
+void main(){
+	unsigned char h , t;
+	EA = 1;
+	ES = 1;
+	lcd_Init();
+	while(1){
+		if(dht11_start() && dht11_checkresponse()){
+			h  = dht_readByte();
+			dht_readByte();
+			t = dht_readByte();
+			dht_readByte();
+			dht_readByte();
+			
+			lcd_cmd(0x01);
+			lcd_cmd(0x80);  
+            LCD_String("T:");
+            LCD_Char((t/10)+'0');
+            LCD_Char((t%10)+'0');
+            LCD_Char(0xDF);     
+            LCD_Char('C');
+            
+            lcd_cmd(0x01);
+			lcd_cmd(0x80);  
+            lcd_String("T:");
+            lcd_data((h/10)+'0');
+            lcd_data((h%10)+'0');     
+            lcd_data('%');
+            
+            
+            delay_ms(1000);
+		}
+		else{
+			lcd_cmd(0x01);
+			lcd_cmd(0x80);
+			lcd_string("DHT fail!")
+		}
+		delay_ms(2000);
+	}
+
+
+
+  TRY ON TRY ON!!
+	
+}
