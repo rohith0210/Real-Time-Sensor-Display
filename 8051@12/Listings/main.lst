@@ -1,0 +1,421 @@
+C51 COMPILER V9.60.7.0   MAIN                                                              07/04/2025 14:55:56 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main.lst) TA
+                    -BS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*#include <REGX51.H>
+   2          #include <stdio.h>
+   3          #include <intrins.h>
+   4          
+   5          // Pin connections
+   6          sbit RS = P1^0;
+   7          sbit E  = P1^1;
+   8          sbit D4 = P1^4;
+   9          sbit D5 = P1^5;
+  10          sbit D6 = P1^6;
+  11          sbit D7 = P1^7;
+  12          
+  13          sbit DHT = P2^0; // DHT11 data pin
+  14          
+  15          // Simple delay functions
+  16          void delay_us(unsigned int us) {
+  17              while(us--) {_nop_(); _nop_();}
+  18          }
+  19          
+  20          void delay_ms(unsigned int ms) {
+  21              while(ms--) delay_us(1000);
+  22          }
+  23          
+  24          // UART functions
+  25          void uart_init() {
+  26              TMOD |= 0x20;      // Timer1 in Mode2
+  27              TH1 = 0xFD;        // Baud rate 9600
+  28              SCON = 0x50;       // 8-bit UART mode
+  29              TR1 = 1;           // Start Timer1
+  30          }
+  31          
+  32          void uart_send(char ch) {
+  33              SBUF = ch;
+  34              while (TI == 0);
+  35              TI = 0;
+  36          }
+  37          
+  38          void uart_send_string(char* str) {
+  39              while(*str) {
+  40                  uart_send(*str++);
+  41              }
+  42          }
+  43          
+  44          // LCD functions
+  45          void lcd_enable() {
+  46              E = 1; delay_us(5); E = 0;
+  47          }
+  48          
+  49          void lcd_send_nibble(unsigned char nib) {
+  50              D4 = (nib >> 0) & 1;
+  51              D5 = (nib >> 1) & 1;
+  52              D6 = (nib >> 2) & 1;
+  53              D7 = (nib >> 3) & 1;
+  54              lcd_enable();
+C51 COMPILER V9.60.7.0   MAIN                                                              07/04/2025 14:55:56 PAGE 2   
+
+  55          }
+  56          
+  57          void lcd_send_byte(unsigned char byte, bit is_cmd) {
+  58              RS = is_cmd ? 0 : 1;
+  59              lcd_send_nibble(byte >> 4);
+  60              lcd_send_nibble(byte & 0x0F);
+  61              delay_ms(2);
+  62          }
+  63          
+  64          void lcd_cmd(unsigned char cmd) {
+  65              lcd_send_byte(cmd, 1);
+  66          }
+  67          
+  68          void lcd_data(unsigned char dat) {
+  69              lcd_send_byte(dat, 0);
+  70          }
+  71          
+  72          void lcd_init() {
+  73              delay_ms(20);
+  74              lcd_send_nibble(0x03); delay_ms(5);
+  75              lcd_send_nibble(0x03); delay_ms(1);
+  76              lcd_send_nibble(0x03); delay_ms(1);
+  77              lcd_send_nibble(0x02);  // 4-bit mode
+  78          
+  79              lcd_cmd(0x28); // 2-line
+  80              lcd_cmd(0x0C); // display on
+  81              lcd_cmd(0x06); // move right
+  82              lcd_cmd(0x01); // clear screen
+  83          }
+  84          
+  85          void lcd_print(char* str) {
+  86              while(*str) lcd_data(*str++);
+  87          }
+  88          
+  89          // DHT11 functions
+  90          bit dht_start() {
+  91              DHT = 0;
+  92              delay_ms(18);
+  93              DHT = 1;
+  94              delay_us(20);
+  95          
+  96              if(DHT == 0) {
+  97                  while(DHT == 0); // wait for response
+  98                  while(DHT == 1);
+  99                  return 1;
+ 100              }
+ 101              return 0;
+ 102          }
+ 103          
+ 104          unsigned char dht_read_byte() {
+ 105              unsigned char i, result = 0;
+ 106              for(i = 0; i < 8; i++) {
+ 107                  while(DHT == 0);
+ 108                  delay_us(30);
+ 109                  result <<= 1;
+ 110                  if(DHT == 1)
+ 111                      result |= 1;
+ 112                  while(DHT == 1);
+ 113              }
+ 114              return result;
+ 115          }
+ 116          
+C51 COMPILER V9.60.7.0   MAIN                                                              07/04/2025 14:55:56 PAGE 3   
+
+ 117          bit dht_read(unsigned char *temp, unsigned char *hum) {
+ 118              unsigned char h_int, h_dec, t_int, t_dec, checksum;
+ 119              if (!dht_start()) return 0;
+ 120          
+ 121              h_int = dht_read_byte();
+ 122              h_dec = dht_read_byte();
+ 123              t_int = dht_read_byte();
+ 124              t_dec = dht_read_byte();
+ 125              checksum = dht_read_byte();
+ 126          
+ 127              if ((h_int + h_dec + t_int + t_dec) != checksum)
+ 128                  return 0;
+ 129          
+ 130              *temp = t_int;
+ 131              *hum  = h_int;
+ 132              return 1;
+ 133          }
+ 134          
+ 135          // MAIN
+ 136          void main() {
+ 137              unsigned char temperature, humidity;
+ 138              char buf[32];
+ 139          
+ 140              uart_init();
+ 141              lcd_init();
+ 142          
+ 143              while(1) {
+ 144                  lcd_cmd(0x80);
+ 145                  if (dht_read(&temperature, &humidity)) {
+ 146                      lcd_print("Temp: ");
+ 147                      lcd_data(temperature / 10 + '0');
+ 148                      lcd_data(temperature % 10 + '0');
+ 149                      lcd_data('C');
+ 150          
+ 151                      lcd_cmd(0xC0);
+ 152                      lcd_print("Hum: ");
+ 153                      lcd_data(humidity / 10 + '0');
+ 154                      lcd_data(humidity % 10 + '0');
+ 155                      lcd_data('%');
+ 156          
+ 157                      sprintf(buf, "Temp:%dC Hum:%d%%\r\n", temperature, humidity);
+ 158                      uart_send_string(buf);
+ 159                  } else {
+ 160                      lcd_print("Sensor Error");
+ 161                      uart_send_string("Sensor Error\r\n");
+ 162                  }
+ 163          
+ 164                  delay_ms(2000);
+ 165              }
+ 166          }
+ 167          */
+ 168          #include<REG52.H>
+ 169          #include<string.h>
+ 170          sbit RS   = P2^0;
+ 171          sbit RW   = P2^1;
+ 172          sbit E    = P2^2;
+ 173          #define LCD_PORT P3    
+ 174          sbit DHT11 = P1^0;       
+ 175          unsigned char rx[16];
+ 176          unsigned char rx_idx = 0;
+ 177          void delay_ms(unsigned int ms){
+ 178   1        int i,j;
+C51 COMPILER V9.60.7.0   MAIN                                                              07/04/2025 14:55:56 PAGE 4   
+
+ 179   1        for(i = 0;i<ms;i++){
+ 180   2          for(j = 0;j<1275;j++){
+ 181   3            
+ 182   3          }
+ 183   2        }
+ 184   1      }
+ 185          void delay_us(unsigned int us) {
+ 186   1        unsigned int i, j;
+ 187   1        for (i = 0; i < us; i++) {
+ 188   2          for (j = 0; j < 1; j++){
+ 189   3            
+ 190   3        }
+ 191   2        }
+ 192   1      }
+ 193          void lcd_enable(){
+ 194   1        E = 1;
+ 195   1        delay_us(2);
+ 196   1        E = 0;
+ 197   1      }
+ 198          void lcd_cmd(unsigned char cmd){
+ 199   1        RS = 0;
+ 200   1        RW = 0;
+ 201   1        //LCD_DATA = (cmd & 0xF0);
+ 202   1        P3 = (P3 & 0x0F) | (cmd & 0xF0);
+ 203   1        lcd_enable();
+ 204   1      //  LCD_DATA = ((cmd<<4) & 0xF0);
+ 205   1      P3 = (P3 & 0x0F) | ((cmd<<4) & 0xF0);
+ 206   1        lcd_enable();
+ 207   1      }
+ 208          void lcd_data(unsigned char dat){
+ 209   1        RS = 1;
+ 210   1        RW = 0;
+ 211   1        //LCD_DATA = (dat & 0xF0);
+ 212   1        P3 = (P3 & 0x0F) | (dat & 0xF0);
+ 213   1        lcd_enable();
+ 214   1        //LCD_DATA = ((dat<<4) & 0xF0);
+ 215   1        P3 = (P3 & 0x0F) | ((dat<<4) & 0xF0);
+ 216   1        lcd_enable();
+ 217   1      }
+ 218          void lcd_string(char *str){
+ 219   1        while(*str){
+ 220   2          lcd_data(*str++);
+ 221   2        }
+ 222   1      }
+ 223          void lcd_Init(){
+ 224   1        lcd_cmd(0x28);
+ 225   1        lcd_cmd(0x0C);
+ 226   1        lcd_cmd(0x06);
+ 227   1        lcd_cmd(0x01);
+ 228   1      }
+ 229          void UART_Init(){
+ 230   1        TMOD = 0x20;
+ 231   1        SCON = 0x50;
+ 232   1        TH1 = 0xFD;
+ 233   1        TR1 = 1;
+ 234   1      }
+ 235          void UART_Tx(char c){
+ 236   1        SBUF = c;
+ 237   1        while(!TI);
+ 238   1          TI = 0;
+ 239   1      }
+ 240          void UART_TxString(char s[]){
+C51 COMPILER V9.60.7.0   MAIN                                                              07/04/2025 14:55:56 PAGE 5   
+
+ 241   1         int i = 0;
+ 242   1         while(s[i] != '\0'){
+ 243   2           UART_Tx(s[i]);
+ 244   2           i++;
+ 245   2         }  
+ 246   1      }
+ 247          
+ 248          void serial_ISR(void) interrupt 4{
+ 249   1          char ch;
+ 250   1        
+ 251   1      
+ 252   1        
+ 253   1        if (RI){
+ 254   2          ch = SBUF;
+ 255   2          RI = 0;
+ 256   2          if(ch == '\r'){
+ 257   3            rx[rx_idx] = '\0';
+ 258   3            if(strcmp(rx,"tem") == 0){
+ 259   4              lcd_cmd(0x01);
+ 260   4              lcd_cmd(0x80);
+ 261   4              lcd_string("Temperature is..");
+ 262   4              delay_ms(1000);
+ 263   4              UART_TxString("OK\r\n");
+ 264   4            }
+ 265   3            else if(strcmp(rx,"hum") == 0){
+ 266   4              lcd_cmd(0x01);
+ 267   4              lcd_cmd(0x80);
+ 268   4              lcd_string("Humidity is..");
+ 269   4              delay_ms(1000);
+ 270   4              UART_TxString("OK\r\n");
+ 271   4            }
+ 272   3            else if(strcmp(rx,"tem/hum") == 0){
+ 273   4              lcd_cmd(0x01);
+ 274   4              lcd_cmd(0x80);
+ 275   4              lcd_string("Tem/Hum is..");
+ 276   4              delay_ms(1000);
+ 277   4              UART_TxString("OK\r\n");
+ 278   4              
+ 279   4            }
+ 280   3            else{
+ 281   4              lcd_cmd(0x01);
+ 282   4              lcd_cmd(0x80);
+ 283   4              lcd_string("Error Cmd..");
+ 284   4              delay_ms(1000);
+ 285   4              UART_TxString("OK\r\n");
+ 286   4            }
+ 287   3            rx_idx = 0;
+ 288   3            
+ 289   3          }
+ 290   2          else {
+ 291   3          rx[rx_idx++] = ch;
+ 292   3          if (rx_idx >= 15) 
+ 293   3            rx_idx = 0;  // prevent buffer overflow
+ 294   3           }
+ 295   2          
+ 296   2        }
+ 297   1      }
+ 298          bit dht11_start(void){
+ 299   1        DHT11 = 0;
+ 300   1        delay_ms(20);
+ 301   1        DHT11 = 1;
+ 302   1        delay_us(30);
+C51 COMPILER V9.60.7.0   MAIN                                                              07/04/2025 14:55:56 PAGE 6   
+
+ 303   1        
+ 304   1        if(DHT11 == 0){
+ 305   2          while(DHT11 == 0);
+ 306   2          while(DHT11 == 1);
+ 307   2          return 1;
+ 308   2        }
+ 309   1        return 0;
+ 310   1      }
+ 311          
+ 312          bit dht11_checkresponse(){
+ 313   1        delay_us(40);
+ 314   1        if(DHT11 == 0){
+ 315   2          delay_us(80);
+ 316   2          if(DHT11 == 1){
+ 317   3            delay_us(80);
+ 318   3            return 1;
+ 319   3        
+ 320   3          }
+ 321   2        }
+ 322   1        return 0;
+ 323   1      }
+ 324          bit dht_readbit(){
+ 325   1        while(!DHT11){
+ 326   2          delay_us(35);
+ 327   2        }
+ 328   1        return DHT11;
+ 329   1      }
+ 330          unsigned char dht_readByte(){
+ 331   1        unsigned char i ;
+ 332   1        unsigned char value = 0 ;
+ 333   1        for(i=0 ;i<8;i++){
+ 334   2          value <<=1 ;
+ 335   2          if(dht_readbit()){
+ 336   3            value = value | 1;
+ 337   3          }
+ 338   2          while(DHT11);
+ 339   2        }
+ 340   1        return value;
+ 341   1      }
+ 342          void main(){
+ 343   1        unsigned char h , t;
+ 344   1        UART_Init();
+ 345   1        EA = 1;
+ 346   1        ES = 1;
+ 347   1        lcd_Init();
+ 348   1        while(1){
+ 349   2          if(dht11_start() && dht11_checkresponse()){
+ 350   3            h  = dht_readByte();
+ 351   3            dht_readByte();
+ 352   3            t = dht_readByte();
+ 353   3            dht_readByte();
+ 354   3            dht_readByte();
+ 355   3            
+ 356   3                  lcd_cmd(0x01);
+ 357   3                  lcd_cmd(0x80); 
+ 358   3                  delay_ms(1000);     
+ 359   3                  lcd_string("T:");
+ 360   3                  lcd_data((t/10)+'0');
+ 361   3                  lcd_data((t%10)+'0');
+ 362   3                  lcd_data(0xDF);     
+ 363   3                  lcd_data('C');
+ 364   3                  
+C51 COMPILER V9.60.7.0   MAIN                                                              07/04/2025 14:55:56 PAGE 7   
+
+ 365   3                  //lcd_cmd(0x01);
+ 366   3            //lcd_cmd(0x80);
+ 367   3            delay_ms(1000);
+ 368   3                 lcd_cmd(0xC0);     
+ 369   3                  lcd_string("H:");
+ 370   3                  lcd_data((h/10)+'0');
+ 371   3                  lcd_data((h%10)+'0');     
+ 372   3                  lcd_data('%');
+ 373   3                  
+ 374   3                  
+ 375   3                  delay_ms(1000);
+ 376   3          }
+ 377   2          else{
+ 378   3            lcd_cmd(0x01);
+ 379   3            lcd_cmd(0x80);
+ 380   3            lcd_string("DHT fail!");
+ 381   3          }
+ 382   2          delay_ms(2000);
+ 383   2        }
+ 384   1        
+ 385   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    722    ----
+   CONSTANT SIZE    =     93    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     17      10
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

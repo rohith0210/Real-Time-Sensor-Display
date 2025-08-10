@@ -1,0 +1,3 @@
+".\Objects\main.obj" 
+TO ".\Objects\datalogging" 
+PRINT(".\Listings\datalogging.m51") RAMSIZE(256) 

@@ -1,0 +1,3 @@
+".\Objects\main.obj" 
+TO ".\Objects\dht11lcd" 
+PRINT(".\Listings\dht11lcd.m51") RAMSIZE(256) 

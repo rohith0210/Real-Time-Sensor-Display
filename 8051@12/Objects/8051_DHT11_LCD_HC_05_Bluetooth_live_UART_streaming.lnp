@@ -1,0 +1,3 @@
+".\Objects\main.obj" 
+TO ".\Objects\8051_DHT11_LCD_HC_05_Bluetooth_live_UART_streaming" 
+PRINT(".\Listings\8051_DHT11_LCD_HC_05_Bluetooth_live_UART_streaming.m51") RAMSIZE(256) 

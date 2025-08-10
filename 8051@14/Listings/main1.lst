@@ -1,0 +1,369 @@
+C51 COMPILER V9.60.7.0   MAIN1                                                             07/09/2025 20:45:15 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE MAIN1
+OBJECT MODULE PLACED IN .\Objects\main1.obj
+COMPILER INVOKED BY: D:\C51\BIN\C51.EXE main1.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main1.lst) 
+                    -TABS(2) OBJECT(.\Objects\main1.obj)
+
+line level    source
+
+   1          #include<regx52.h>
+   2          #include<string.h>
+   3          sbit SDA = P2^0;
+   4          sbit SCL = P2^1;
+   5          sbit DHT11 = P2^2;
+   6          unsigned char rx[16];
+   7          unsigned int eep_ptr = 0;
+   8          bit dump_flag = 0;
+   9            unsigned char hum;
+  10            unsigned char temp;
+  11             char line[48];
+  12          
+  13          void delay_ms(unsigned int ms){
+  14   1        int i,j;
+  15   1        for(i = 0 ;i <ms ; i++){
+  16   2          for(j = 0 ;j <1275 ; j++){
+  17   3            //
+  18   3          }
+  19   2        }
+  20   1      }
+  21          void delay_us(unsigned int us){
+  22   1        int i ,j;
+  23   1        for(i = 0 ;i <us ; i++){
+  24   2          for(j = 0 ;j <1 ; j++){
+  25   3            //
+  26   3          }
+  27   2        }
+  28   1      }
+  29          void UART_Init(){
+  30   1        TMOD = 0x20;
+  31   1        SCON = 0x50;
+  32   1        TH1 = 0xFD;
+  33   1        TR1 = 1;
+  34   1        
+  35   1      }
+  36          void UART_Tx(char c){
+  37   1        SBUF = c;
+  38   1        while(!TI);
+  39   1        TI = 0;
+  40   1      }
+  41          void UART_TxString(char str[]){
+  42   1         int i = 0;
+  43   1        while(str[i] != '\0'){
+  44   2          UART_Tx(str[i]);
+  45   2          i++;
+  46   2        }
+  47   1      }
+  48          
+  49          void i2c_start(){
+  50   1        SDA = 1;
+  51   1        SCL = 1;
+  52   1        delay_us(5);
+  53   1        SDA = 0;
+  54   1        delay_us(5);
+C51 COMPILER V9.60.7.0   MAIN1                                                             07/09/2025 20:45:15 PAGE 2   
+
+  55   1        SCL = 0;
+  56   1        
+  57   1      }
+  58          
+  59          void i2c_stop(){
+  60   1        SDA = 0;
+  61   1        SCL = 1;
+  62   1        delay_us(5);
+  63   1        SDA = 1;
+  64   1        
+  65   1      }
+  66          
+  67          bit i2c_write (unsigned char byte){
+  68   1        unsigned char i;
+  69   1        bit ack;
+  70   1        for(i = 0; i < 8 ; i++){
+  71   2          SDA = byte & 0x80;
+  72   2          byte <<= 1;
+  73   2          SCL = 1;
+  74   2          delay_us(5);
+  75   2          SCL = 0;
+  76   2        }
+  77   1        SDA = 1;
+  78   1        SCL = 1;
+  79   1        delay_us(5);
+  80   1        ack = !SDA;
+  81   1        SCL = 0;
+  82   1        return ack;
+  83   1        
+  84   1      }
+  85          
+  86          unsigned char i2c_read(bit ack){
+  87   1        unsigned char i ;
+  88   1        unsigned char byte = 0;
+  89   1        SDA = 1;
+  90   1        for(i = 0; i< 8;i++){
+  91   2          SCL = 1;
+  92   2          delay_ms(5);
+  93   2          byte = (byte & 0x80) | SDA;
+  94   2          SCL = 0;
+  95   2          delay_ms(5);
+  96   2        }
+  97   1        //if(ack)
+  98   1        //  SDA = 0;
+  99   1      //  else 
+ 100   1          //SDA = 1;
+ 101   1          SDA = !ack;
+ 102   1        SCL = 1;
+ 103   1        delay_ms(5);
+ 104   1        SCL = 0;
+ 105   1        delay_ms(5);
+ 106   1        
+ 107   1        SDA = 1;
+ 108   1        return byte;
+ 109   1      }
+ 110          #define EEPROM_W  0xA0
+ 111          #define EEPROM_R  0xA1
+ 112          void eeprom_write(unsigned int addr,unsigned char value){
+ 113   1        i2c_start();
+ 114   1        i2c_write (EEPROM_W);
+ 115   1        i2c_write(addr >> 8);
+ 116   1        i2c_write(addr & 0xFF);
+C51 COMPILER V9.60.7.0   MAIN1                                                             07/09/2025 20:45:15 PAGE 3   
+
+ 117   1        i2c_write(value);
+ 118   1        i2c_stop(); 
+ 119   1        
+ 120   1        do{
+ 121   2          i2c_start();
+ 122   2        }while(!i2c_write(EEPROM_W));
+ 123   1        i2c_stop();
+ 124   1        
+ 125   1      }
+ 126          
+ 127          
+ 128          void eeprom_write_packet(unsigned int addr, unsigned char *buf, unsigned char len)
+ 129          {
+ 130   1          unsigned char i;
+ 131   1        i2c_start();
+ 132   1          i2c_write(EEPROM_W);
+ 133   1          i2c_write(addr>>8);
+ 134   1          i2c_write(addr & 0xFF);
+ 135   1          //while(len--) i2c_write(*buf++);
+ 136   1          for (i = 0;i<len ; i++){
+ 137   2            i2c_write(buf[i]);
+ 138   2        }
+ 139   1          i2c_stop();
+ 140   1          delay_ms(5);
+ 141   1      }
+ 142          
+ 143          unsigned char eeprom_read(unsigned int addr){
+ 144   1        unsigned char value;
+ 145   1        i2c_start();
+ 146   1        i2c_write (EEPROM_W);
+ 147   1        i2c_write(addr >> 8);
+ 148   1        i2c_write(addr & 0xFF);
+ 149   1        i2c_start();
+ 150   1          i2c_write (EEPROM_R);
+ 151   1          value = i2c_read(0);
+ 152   1          i2c_stop();
+ 153   1          return value;
+ 154   1      }
+ 155          
+ 156          bit dht11_start(){
+ 157   1        DHT11 = 0 ;
+ 158   1        delay_ms(20);
+ 159   1        DHT11 = 1;
+ 160   1        delay_us(30);
+ 161   1        
+ 162   1        if(DHT11 == 0){
+ 163   2          while(DHT11 == 0);
+ 164   2          while(DHT11 == 1);
+ 165   2          return 1;
+ 166   2        }
+ 167   1        return 0;
+ 168   1      }
+ 169          
+ 170          bit dht11_response(){
+ 171   1        delay_us(40);
+ 172   1        if (DHT11 == 0){
+ 173   2          delay_us(80);
+ 174   2          delay_us(80);
+ 175   2          if(DHT11 == 1){
+ 176   3            delay_us(80);
+ 177   3            return 1;
+ 178   3        }
+C51 COMPILER V9.60.7.0   MAIN1                                                             07/09/2025 20:45:15 PAGE 4   
+
+ 179   2        
+ 180   2          }
+ 181   1        return 0;
+ 182   1      }
+ 183          bit read_bit(){
+ 184   1        while(!DHT11);
+ 185   1        delay_us(35);
+ 186   1        return DHT11;
+ 187   1        
+ 188   1      }
+ 189          
+ 190          unsigned char read_byte(){
+ 191   1        unsigned char i;
+ 192   1        unsigned char value = 0;
+ 193   1        for(i  = 0;i < 8 ;i++){
+ 194   2          value <<= 1;
+ 195   2          if(read_bit())
+ 196   2             value |= 1;
+ 197   2          while(DHT11);
+ 198   2        }
+ 199   1        return value;
+ 200   1      }
+ 201          unsigned char bcdtodec(unsigned char b){
+ 202   1        return((b >> 4 )*10 | (b & 0x0F));
+ 203   1      }
+ 204          
+ 205          unsigned char uart_dectobcd(unsigned char b){
+ 206   1        return((b / 10 ) << 4 | (b % 10));
+ 207   1      }
+ 208          #define DS1307_W  0xD0
+ 209          #define DS1307_R  0xD1
+ 210          unsigned char ds1307_read(unsigned char reg){
+ 211   1        unsigned char value;
+ 212   1        i2c_start();
+ 213   1        i2c_write (DS1307_W);
+ 214   1        i2c_write(reg);
+ 215   1        i2c_start();
+ 216   1        i2c_write (DS1307_R);
+ 217   1        value = i2c_read(0);
+ 218   1        i2c_stop();
+ 219   1        return value;
+ 220   1      }
+ 221          void log_one_sample(){
+ 222   1        unsigned char pkt[8];
+ 223   1        pkt[0] = ds1307_read(0x00);
+ 224   1        pkt[1] = ds1307_read(0x01);
+ 225   1        pkt[2] = ds1307_read(0x02);   
+ 226   1          pkt[3] = ds1307_read(0x04);   
+ 227   1          pkt[4] = ds1307_read(0x05);  
+ 228   1          pkt[5] = ds1307_read(0x06); 
+ 229   1          pkt[6] = temp;
+ 230   1          pkt[7] = hum;
+ 231   1         eeprom_write_packet(eep_ptr, pkt, 8);
+ 232   1          eep_ptr += 8;
+ 233   1          
+ 234   1          if (eep_ptr >= 0x8000) {
+ 235   2              eep_ptr = 0; 
+ 236   2              //toggle_led(); (opptional)
+ 237   2          }
+ 238   1      }
+ 239          void Serial_ISR(void) interrupt 4
+ 240          {
+C51 COMPILER V9.60.7.0   MAIN1                                                             07/09/2025 20:45:15 PAGE 5   
+
+ 241   1          char ch;
+ 242   1        int i = 0;
+ 243   1        if (RI){
+ 244   2          ch = SBUF;
+ 245   2          if(ch == '\r'){
+ 246   3            rx[i] = '\0';
+ 247   3            if(strcmp(rx,"dump") == 0){
+ 248   4                dump_flag = 1;
+ 249   4              }
+ 250   3            else{
+ 251   4               UART_TxString("\r\n Error CMD!! \r\n");
+ 252   4            }
+ 253   3            
+ 254   3            
+ 255   3          }
+ 256   2          else{
+ 257   3            i = 0;
+ 258   3          }
+ 259   2        }
+ 260   1      }
+ 261          void dump_log(){
+ 262   1        unsigned int addr = 0;
+ 263   1         //unsigned char line[48];
+ 264   1        unsigned char pkt[8];
+ 265   1        unsigned char i;
+ 266   1         UART_TxString("\r\n--- EEPROM DUMP START ---\r\n");
+ 267   1         
+ 268   1         while(addr < eep_ptr){
+ 269   2          for(i = 0 ; i<8 ; i++){
+ 270   3             pkt[i] = eeprom_read(addr + i);
+ 271   3          addr += 8; //???
+ 272   3            }
+ 273   2            
+ 274   2          UART_Tx('[');
+ 275   2          uart_dectobcd(bcdtodec(pkt[2]));
+ 276   2          UART_Tx(':');
+ 277   2          uart_dectobcd(bcdtodec(pkt[1]));
+ 278   2          UART_Tx(':');
+ 279   2          uart_dectobcd(bcdtodec(pkt[0]));
+ 280   2          UART_Tx(' ');
+ 281   2          
+ 282   2          uart_dectobcd(bcdtodec(pkt[3]));
+ 283   2          UART_Tx('/');
+ 284   2          uart_dectobcd(bcdtodec(pkt[4]));
+ 285   2          UART_Tx('/');
+ 286   2          uart_dectobcd(bcdtodec(pkt[5]));
+ 287   2          UART_Tx(']');
+ 288   2          UART_Tx(':');
+ 289   2          
+ 290   2          
+ 291   2          UART_Tx('T'); 
+ 292   2          UART_Tx(':'); 
+ 293   2          uart_dectobcd(pkt[6]); 
+ 294   2          UART_Tx(0xB0); 
+ 295   2              UART_Tx('C'); 
+ 296   2          UART_Tx(' ');
+ 297   2      
+ 298   2              UART_Tx('H'); 
+ 299   2          UART_Tx(':');
+ 300   2          uart_dectobcd(pkt[7]); 
+ 301   2          UART_Tx('%');
+ 302   2              UART_TxString("\r\n");
+C51 COMPILER V9.60.7.0   MAIN1                                                             07/09/2025 20:45:15 PAGE 6   
+
+ 303   2         }
+ 304   1        
+ 305   1      }
+ 306          void main(){
+ 307   1        UART_Init();
+ 308   1        UART_TxString("\r\nDHT11 logging to EEPROM \n");
+ 309   1        EA = 1;
+ 310   1        ES = 1;
+ 311   1        while(1){
+ 312   2          if(dht11_start() && dht11_response()){
+ 313   3            hum = read_byte();
+ 314   3                read_byte();
+ 315   3               temp = read_byte();
+ 316   3               read_byte();
+ 317   3               
+ 318   3               log_one_sample();
+ 319   3               delay_ms(5000);
+ 320   3               if(dump_flag){
+ 321   4                dump_flag = 0;
+ 322   4            UART_TxString(" EEPROM DUMP \r\n");
+ 323   4            dump_log();
+ 324   4             }
+ 325   3          }
+ 326   2          
+ 327   2        }
+ 328   1      }
+ 329          /*
+ 330          Circular buffer – keep logging forever by overwriting -
+ 331           -oldest page.
+ 332           Add a button to trigger “dump” instead of UART command.
+ 333           Display data on LCD instead of UART (just format the same).
+ 334           */
+ 335           //above mentioned are the improvements we can do furthurely!!!
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1040    ----
+   CONSTANT SIZE    =    100    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     68      40
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1       2
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

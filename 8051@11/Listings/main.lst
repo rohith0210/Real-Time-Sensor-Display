@@ -1,0 +1,179 @@
+C51 COMPILER V9.60.7.0   MAIN                                                              06/29/2025 19:53:53 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main.lst) TA
+                    -BS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*  8051 + DHT11 + 16×2 LCD (4-bit)  |  Crystal: 12 MHz
+   2           *  Displays Temperature (°C) and Humidity (%) every 2 s
+   3           *  Tested in Keil µVision 5 (C51) + Proteus
+   4           */
+   5          #include <REGX51.H>
+   6          #include <intrins.h>          // _nop_()
+   7          
+   8          /* ---------------- Pin Assignments ---------------- */
+   9          sbit LCD_RS  = P1^0;
+  10          sbit LCD_E   = P1^1;
+  11          sbit LCD_D4  = P1^4;
+  12          sbit LCD_D5  = P1^5;
+  13          sbit LCD_D6  = P1^6;
+  14          sbit LCD_D7  = P1^7;
+  15          
+  16          sbit DHT11   = P2^0;          // DATA line
+  17          
+  18          /* ---------------- Delay Helpers ------------------ */
+  19          void delay_us(unsigned int us)        // ˜1 µs per loop @12 MHz
+  20          {
+  21   1          while(us--) { _nop_(); _nop_(); _nop_(); _nop_(); _nop_(); }
+  22   1      }
+  23          
+  24          void delay_ms(unsigned int ms)
+  25          {
+  26   1          while(ms--) delay_us(1000);
+  27   1      }
+  28          
+  29          /* ---------------- LCD Low-level ------------------ */
+  30          void lcd_pulse_e(void)
+  31          {
+  32   1          LCD_E = 1; _nop_(); _nop_(); LCD_E = 0;
+  33   1      }
+  34          
+  35          void lcd_send_nibble(unsigned char nib)
+  36          {
+  37   1          LCD_D4 = (nib >> 0) & 1;
+  38   1          LCD_D5 = (nib >> 1) & 1;
+  39   1          LCD_D6 = (nib >> 2) & 1;
+  40   1          LCD_D7 = (nib >> 3) & 1;
+  41   1          lcd_pulse_e();
+  42   1      }
+  43          
+  44          void lcd_send_byte(unsigned char value, bit is_cmd)
+  45          {
+  46   1          LCD_RS = (is_cmd) ? 0 : 1;
+  47   1          lcd_send_nibble(value >> 4);
+  48   1          lcd_send_nibble(value & 0x0F);
+  49   1          delay_us(50);
+  50   1      }
+  51          
+  52          void lcd_cmd (unsigned char value) { lcd_send_byte(value, 1); }
+  53          void lcd_data(unsigned char value) { lcd_send_byte(value, 0); }
+  54          
+C51 COMPILER V9.60.7.0   MAIN                                                              06/29/2025 19:53:53 PAGE 2   
+
+  55          void lcd_init(void)
+  56          {
+  57   1          delay_ms(20);                       // LCD power-up
+  58   1          lcd_send_nibble(0x03); delay_ms(5);
+  59   1          lcd_send_nibble(0x03); delay_us(100);
+  60   1          lcd_send_nibble(0x03);
+  61   1          lcd_send_nibble(0x02);              // 4-bit mode
+  62   1          lcd_cmd(0x28);                      // 2 lines, 5×8 font
+  63   1          lcd_cmd(0x0C);                      // display ON, cursor OFF
+  64   1          lcd_cmd(0x06);                      // entry mode
+  65   1          lcd_cmd(0x01); delay_ms(2);         // clear
+  66   1      }
+  67          
+  68          void lcd_print(const char *s)
+  69          {
+  70   1          while(*s) lcd_data(*s++);
+  71   1      }
+  72          
+  73          void lcd_print_uint(unsigned int num)   // up to 3 digits
+  74          {
+  75   1          char buf[4]; buf[3] = '\0';
+  76   1          buf[2] = '0' + (num % 10); num /= 10;
+  77   1          buf[1] = '0' + (num % 10); num /= 10;
+  78   1          buf[0] = '0' + (num % 10);
+  79   1          lcd_print(buf + (buf[0] == '0' ? (buf[1] == '0' ? 2 : 1) : 0));
+  80   1      }
+  81          
+  82          /* ---------------- DHT11 Routines ----------------- */
+  83          bit dht11_start(void)
+  84          {
+  85   1          DHT11 = 0;                           // Host LOW
+  86   1          delay_ms(20);                        // =18 ms
+  87   1          DHT11 = 1;                           // Release line
+  88   1          delay_us(30);                        // 20–40 µs
+  89   1      
+  90   1          if(DHT11 == 0) {                     // DHT pulls LOW (80 µs)
+  91   2              while(DHT11 == 0);               // wait LOW end
+  92   2              while(DHT11 == 1);               // wait HIGH end
+  93   2              return 1;                        // response OK
+  94   2          }
+  95   1          return 0;                            // no response
+  96   1      }
+  97          
+  98          unsigned char dht11_read_byte(void)
+  99          {
+ 100   1          unsigned char i, byte_val = 0;
+ 101   1          for(i = 0; i < 8; i++) {
+ 102   2              while(DHT11 == 0);               // 50 µs LOW
+ 103   2              delay_us(35);                    // sample mid-HIGH
+ 104   2              byte_val <<= 1;
+ 105   2              if(DHT11) byte_val |= 1;         // bit-1 if still HIGH
+ 106   2              while(DHT11);                    // wait end of HIGH
+ 107   2          }
+ 108   1          return byte_val;
+ 109   1      }
+ 110          
+ 111          bit dht11_read(unsigned char *temp, unsigned char *hum)
+ 112          {
+ 113   1          unsigned char h_int, h_dec, t_int, t_dec, sum;
+ 114   1          if(!dht11_start()) return 0;
+ 115   1      
+ 116   1          h_int = dht11_read_byte();
+C51 COMPILER V9.60.7.0   MAIN                                                              06/29/2025 19:53:53 PAGE 3   
+
+ 117   1          h_dec = dht11_read_byte();
+ 118   1          t_int = dht11_read_byte();
+ 119   1          t_dec = dht11_read_byte();
+ 120   1          sum   = dht11_read_byte();
+ 121   1      
+ 122   1          if((h_int + h_dec + t_int + t_dec) != sum) return 0;
+ 123   1      
+ 124   1          *temp = t_int;
+ 125   1          *hum  = h_int;
+ 126   1          return 1;
+ 127   1      }
+ 128          
+ 129          /* ---------------- Main --------------------------- */
+ 130          void main(void)
+ 131          {
+ 132   1          unsigned char temp, hum;
+ 133   1      
+ 134   1          lcd_init();
+ 135   1      lcd_cmd(0x80);
+ 136   1          lcd_print("LCD OK");
+ 137   1          while(1)
+ 138   1          {
+ 139   2              if(dht11_read(&temp, &hum)) {
+ 140   3                  lcd_cmd(0x80);               // 1st line
+ 141   3                  lcd_print("Temp:"); lcd_print_uint(temp); lcd_data('C');
+ 142   3                  lcd_cmd(0xC0);               // 2nd line
+ 143   3                  lcd_print("Hum :");  lcd_print_uint(hum);  lcd_data('%');
+ 144   3              } else {
+ 145   3                  lcd_cmd(0x80); lcd_print("  Sensor Error  ");
+ 146   3                  lcd_cmd(0xC0); lcd_print("Check wiring!  ");
+ 147   3              }
+ 148   2      
+ 149   2              delay_ms(2000);                  // =1 s between reads
+ 150   2          }
+ 151   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    603    ----
+   CONSTANT SIZE    =     52    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      17
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
