@@ -1,1 +1,338 @@
+YOU CAN DO MORE CHANGES IN WHICH I HAVE CREATED BY MY OWN!!
+TRY OUT USING SOME STUFFS GO ON CRAZY!!!
 
+
+#include<regx52.h>
+#include<string.h>
+sbit SDA = P2^0;
+sbit SCL = P2^1;
+sbit DHT11 = P2^2;
+unsigned char rx[16];
+unsigned int eep_ptr = 0;
+bit dump_flag = 0;
+void delay_ms(unsigned int ms){
+	int i,j;
+	for(i = 0 ;i <ms ; i++){
+		for(j = 0 ;j <1275 ; j++){
+			//
+		}
+	}
+}
+void delay_us(unsigned int us){
+	int i ,j;
+	for(i = 0 ;i <us ; i++){
+		for(j = 0 ;j <1 ; j++){
+			//
+		}
+	}
+}
+void UART_Init(){
+	TMOD = 0x20;
+	SCON = 0x50;
+	TH1 = 0xFD;
+	TR1 = 1;
+	
+}
+void UART_Tx(char c){
+	SBUF = c;
+	while(!TI);
+	TI = 0;
+}
+void UART_TxString(char str[]){
+	 int i = 0;
+	while(s[i] != '\0'){
+		UART_Tx(s[i]);
+		i++;
+	}
+}
+
+void i2c_start(){
+	SDA = 1;
+	SCL = 1;
+	delay_us(5);
+	SDA = 0;
+	delay_us(5);
+	SCL = 0;
+	
+}
+
+void i2c_stop(){
+	SDA = 0;
+	SCL = 1;
+	delay_us(5);
+	SDA = 1;
+	
+}
+
+bit i2c_write (unsigned char byte){
+	unsigned char i;
+	bit ack;
+	for(i = 0; i < 8 ; i++){
+		SDA = byte & 0x80;
+		byte <<= 1;
+		SCL = 1;
+		delay_us(5);
+		SCL = 0;
+	}
+	SDA = 1;
+	SCL = 1;
+	delay_us(5);
+	ack = !SDA;
+	SCL = 0;
+	return ack;
+	
+}
+
+unsigned char i2c_read(bit ack){
+	unsigned char i ;
+	unsigned char byte = 0;
+	SDA = 1;
+	for(i = 0; i< 8;i++){
+		SCL = 1;
+		delay_ms(5);
+		byte = (byte & 0x80) | SDA;
+		SCL = 0;
+		delay_ms(5);
+	}
+	//if(ack)
+	//	SDA = 0;
+//	else 
+	  //SDA = 1;
+	  SDA = !ack;
+	SCL = 1;
+	delay_ms(5);
+	SCL = 0;
+	delay_ms(5);
+	
+	SDA = 1;
+	return byte;
+}
+#define EEPROM_W  0xA0
+#define EEPROM_R  0xA1
+void eeprom_write(unsigned int addr,unsigned char data){
+	i2c_start();
+	i2c_write (EEPROM_W);
+	i2c_write(addr >> 8);
+	i2c_write(addr & 0xFF);
+	i2c_write(data);
+	i2c_stop();	
+	
+	do{
+		i2c_start();
+	}while(!i2c_write(EEPROM_W));
+	i2c_stop();
+	
+}
+
+
+void eeprom_write_packet(unsigned int addr, unsigned char *buf, unsigned char len)
+{
+    unsigned char i;
+	i2c_start();
+    i2c_write(EEPROM_W);
+    i2c_write(addr>>8);
+    i2c_write(addr & 0xFF);
+    //while(len--) i2c_write(*buf++);
+    for (i = 0;i<len ; i++){
+    	i2c_write(buf[i]);
+	}
+    i2c_stop();
+    delay_ms(5);
+}
+
+unsigned char eeprom_read(unsigned int addr){
+	unsigned char data;
+	i2c_start();
+	i2c_write (EEPROM_W);
+	i2c_write(addr >> 8);
+	i2c_write(addr & 0xFF);
+	i2c_start();
+    i2c_write (EEPROM_R);
+    data = i2c_read(0);
+    i2c_stop();
+    return data;
+}
+
+bit dht11_start(){
+	DHT11 = 0 ;
+	delay_ms(20);
+	DHT11 = 1;
+	delay_us(30);
+	
+	if(DHT11 == 0){
+		while(DHT11 == 0);
+		while(DHT11 == 1);
+		return 1;
+	}
+	return 0;
+}
+
+bit dht11_response(){
+	delay_us(40);
+	if (DHT11 == 0){
+		delay_us(80);
+		delay_us(80);
+	  if(DHT11 == 1){
+	  	delay_us(80);
+	    return 1;
+	}
+	  else
+	    return 0;
+	  }
+
+}
+bit read_bit(){
+	while(!DHT11);
+	delay_us(35);
+	return DHT11;
+	
+}
+
+unsigned char read_byte(){
+	unsigned char i;
+	unsigned char value = 0;
+	for(i  = 0;i < 8 ;i++){
+		value <<= 1;
+		if(read_bit())
+		   value |= 1;
+		while(DHT11);
+	}
+	return value;
+}
+unsigned char bcdtodec(unsigned char b){
+	return((b >> 4 )*10 | (b & 0x0F));
+}
+
+unsigned char uart_dectobcd(unsigned char b){
+	return((b / 10 ) << 4 | (b % 10));
+}
+#define DS1307_W  0xD0
+#define DS1307_R  0xD1
+unsigned char ds1307_read(unsigned char reg){
+	unsigned char value;
+	i2c_start();
+	i2c_write (DS1307_W);
+	i2c_write(reg);
+	i2c_start();
+	i2c_write (DS1307_R);
+	value = i2c_read(0);
+	i2c_stop();
+	return value;
+}
+void log_one_sample(){
+	unsigned char pkt[8];
+	pkt[0] = ds1307_read(0x00);
+	pkt[1] = ds1307_read(0x01);
+	pkt[2] = ds1307_read(0x02);   
+    pkt[3] = ds1307_read(0x04);   
+    pkt[4] = ds1307_read(0x05);  
+    pkt[5] = ds1307_read(0x06); 
+    pkt[6] = temp;
+    pkt[7] = hum;
+   eeprom_write_packet(eep_ptr, pkt, 8);
+    eep_ptr += 8;
+    
+    if (eep_ptr >= 0x8000) {
+        eep_ptr = 0; 
+        //toggle_led(); (opptional)
+    }
+}
+void Serial_ISR(void) interrupt 4
+{
+		char ch;
+	int i = 0;
+	if (RI){
+		ch = SBUF;
+		if(ch == '\r'){
+			rx[i] = '\0';
+			if(strcmp(rx,"dump") == 0){
+					dump_flag = 1;
+	     	}
+			else{
+			   UART_TxString("\r\n Error CMD!! \r\n");
+			}
+			
+			
+		}
+		else{
+			i = 0;
+		}
+	}
+}
+void dump_log(){
+	unsigned int addr = 0;
+	char line[48];
+	unsigned char pkt[8];
+	unsigned char i;
+	 UART_TxString("\r\n--- EEPROM DUMP START ---\r\n");
+	 
+	 while(addr < eep_addr){
+	 	for(i = 0 ; i<8 ; i++)
+	 	   pkt[i] = eep_addr(addr + i);
+	 	addr += 8; //???
+	 	UART_Tx('[');
+	 	uart_dectobcd(bcdtodec(pkt[2]));
+	 	UART_Tx(':');
+	 	uart_dectobcd(bcdtodec(pkt[1]));
+	 	UART_Tx(':');
+	 	uart_dectobcd(bcdtodec(pkt[0]));
+	 	UART_Tx(' ');
+	 	
+	 	uart_dectobcd(bcdtodec(pkt[3]));
+	 	UART_Tx('/');
+		uart_dectobcd(bcdtodec(pkt[4]));
+	 	UART_Tx('/');
+		uart_dectobcd(bcdtodec(pkt[5));
+	 	UART_Tx(']');
+	 	UART_Tx(':');
+	 	
+	 	
+	 	UART_Tx('T'); 
+		UART_Tx(':'); 
+		dectobcd(pkt[6]); 
+		UART_Tx(0xB0); 
+        UART_Tx('C'); 
+		UART_Tx(' ');
+
+        UART_Tx('H'); 
+		UART_Tx(':');
+		dectobcd(pkt[7]); 
+		UART_Tx('%');
+        UART_TxString("\r\n");
+	 }
+	
+}
+void main(){
+	UART_Init();
+	UART_TxString("\r\nDHT11 logging to EEPROM \n");
+	unsigned char hum;
+	unsigned char temp;
+	EA = 1;
+	ES = 1;
+	while(1){
+		if(dht11_start() && dht11_response()){
+			hum = read_byte();
+	        read_byte();
+	       temp = read_byte();
+	       read_byte();
+	       
+	       log_one_sample();
+	       delay_ms(5000);
+	       if(dump_flag){
+	        dump_flag = 0;
+			UART_TxString(" EEPROM DUMP \r\n");
+			dump_log();
+		   }
+		}
+		
+	}
+}
+
+
+/*
+Circular buffer – keep logging forever by overwriting -
+ -oldest page.
+ Add a button to trigger “dump” instead of UART command.
+ Display data on LCD instead of UART (just format the same).
+ */
+ //above mentioned are the improvements we can do furthurely!!!
